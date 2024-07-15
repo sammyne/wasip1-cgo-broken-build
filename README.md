@@ -1,5 +1,33 @@
 # WASIP1 Broken Build with CGo
 
+## 小结
+### cgo 并不支持编译为 wasm
+相关 issue：[unknown ptrSize for $GOARCH "wasm"](https://github.com/golang/go/issues/40543)
+
+### 编译过程报错的函数调用栈追踪
+
+```
+|-runBuild                                      // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/build.go#L462
+  |-Builder.AutoAction                          // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/action.go#L430
+  |-Builder.Do                                  // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/exec.go#L72
+    |-buildActor.Act                            // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/action.go#L459
+      |-Builder.build                           // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/exec.go#L450
+        |-gofiles := str.StringList(p.GoFiles)  // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/exec.go#L591
+          |-load.NoGoError                      // https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/work/exec.go#L796
+```
+
+其中，`gofiles := str.StringList(p.GoFiles)` 这行是将 `Builder.build` 函数的形参 `a.Package.PackagePublic.GoFiles` 赋给局部变量 `gofiles`。
+
+由 `PackagePublic` 结构体对 [GoFiles](https://github.com/golang/go/blob/go1.22.4/src/cmd/go/internal/load/pkg.go#L94) 字段的定义和注释
+```go
+...
+GoFiles           []string `json:",omitempty"` // .go source files (excluding CgoFiles, TestGoFiles, XTestGoFiles)
+CgoFiles          []string `json:",omitempty"` // .go source files that import "C"
+...
+```
+
+可见，wit-bindgen 生成的 bindings 包没有任何满足 `GoFiles` 要求的文件，导致 `GoFiles` 的长度为 0，从而触发编译报错。
+
 ## Environment
 - Go 1.22.4
 
